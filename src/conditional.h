@@ -4,17 +4,15 @@ template <bool B>
 struct conditional_impl;
 
 template <>
-struct conditional_impl<true>
-{
-    template <typename T, typename F>
-    using type = T;
+struct conditional_impl<true> {
+  template <typename T, typename F>
+  using type = T;
 };
 
 template <>
-struct conditional_impl<false>
-{
-    template <typename T, typename F>
-    using type = F;
+struct conditional_impl<false> {
+  template <typename T, typename F>
+  using type = F;
 };
 
 template <bool B, typename T, typename F>
