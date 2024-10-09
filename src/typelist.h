@@ -92,7 +92,6 @@ struct enumerate_impl<ListType<Types...>, std::index_sequence<Idxs...>> {
 template <typename List>
 using enumerate = typename enumerate_impl<List, std::make_index_sequence<count<List>>>::type;
 
-
 // Contains
 template <typename Type, typename List>
 struct contains_impl;
