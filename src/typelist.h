@@ -13,88 +13,6 @@ namespace tl {
 template <typename... Types>
 struct type_list {};
 
-// Transform
-template <template <typename...> typename F, typename List>
-struct transform_impl;
-
-template <template <typename...> typename F, typename... Types>
-struct transform_impl<F, type_list<Types...>> {
-  using type = type_list<F<Types>...>;
-};
-
-template <template <typename...> typename F, typename List>
-using transform = transform_impl<F, List>::type;
-
-// Apply
-template <template <typename...> typename F, typename List>
-struct apply_impl;
-
-template <template <typename...> typename F, template <typename...> typename List, typename... Types>
-struct apply_impl<F, List<Types...>> {
-  using type = F<Types...>;
-};
-
-template <template <typename...> typename F, typename List>
-using apply = apply_impl<F, List>::type;
-
-// Push Back
-
-template <typename Type, typename List>
-struct push_back_impl;
-
-template <typename Type, typename... Types>
-struct push_back_impl<Type, type_list<Types...>> {
-  using type = type_list<Types..., Type>;
-};
-
-template <typename Type, typename List>
-using push_back = push_back_impl<Type, List>::type;
-
-// Pop front
-template <typename List>
-struct pop_front_impl;
-
-template <typename Head, typename... Types>
-struct pop_front_impl<type_list<Head, Types...>> {
-  using type = type_list<Types...>;
-};
-
-template <typename List>
-using pop_front = pop_front_impl<List>::type;
-
-// Front
-template <typename List>
-struct front_impl;
-
-template <typename Head, typename... Types>
-struct front_impl<type_list<Head, Types...>> {
-  using type = Head;
-};
-
-template <typename List>
-using front = front_impl<List>::type;
-
-// Reverse
-template <typename List>
-struct reverse_impl;
-
-template <typename List>
-using reverse = reverse_impl<List>::type;
-
-template <typename List>
-struct reverse_impl {
-  using type = push_back<front<List>, reverse<pop_front<List>>>;
-};
-
-template <>
-struct reverse_impl<type_list<>> {
-  using type = type_list<>;
-};
-
-// Pop back
-template <typename List>
-using pop_back = reverse<pop_front<reverse<List>>>;
-
 // Concatenate an arbitrary number of typelists
 
 template <typename Type>
@@ -113,23 +31,6 @@ identity<List1<Types1..., Types2...>> operator+(identity<List1<Types1...>>, iden
 
 template <template <typename...> typename List, typename... Lists>
 using concat_fast = decltype((identity<List<>>{} + ... + identity<Lists>{}))::type;
-
-// Get nth element
-template <std::size_t N, typename List>
-struct get_nth_impl;
-
-template <std::size_t N, typename List>
-using get_nth = get_nth_impl<N, List>::type;
-
-template <typename Head, typename... Rest>
-struct get_nth_impl<0, type_list<Head, Rest...>> {
-  using type = Head;
-};
-
-template <std::size_t N, typename List>
-struct get_nth_impl {
-  using type = get_nth<N - 1, pop_front<List>>;
-};
 
 // Index
 template <std::size_t N>
@@ -191,9 +92,6 @@ struct enumerate_impl<ListType<Types...>, std::index_sequence<Idxs...>> {
 template <typename List>
 using enumerate = typename enumerate_impl<List, std::make_index_sequence<count<List>>>::type;
 
-// Get nth (fast)
-template <std::size_t N, typename List>
-using get_nth_fast = second<map_find<index<N>, enumerate<List>>>;
 
 // Contains
 template <typename Type, typename List>
@@ -244,25 +142,25 @@ struct flatten_impl<ListType<Types...>> {
 
 // Merge
 template <typename List1, typename List2, template <typename...> typename Cmp>
-struct merge_two_impl;
+struct merge_impl;
 
 template <template <typename...> typename List, template <typename...> typename Cmp>
-struct merge_two_impl<List<>, List<>, Cmp> {
+struct merge_impl<List<>, List<>, Cmp> {
   using type = List<>;
 };
 
 template <typename... Type, template <typename...> typename List, template <typename...> typename Cmp>
-struct merge_two_impl<List<>, List<Type...>, Cmp> {
+struct merge_impl<List<>, List<Type...>, Cmp> {
   using type = List<Type...>;
 };
 
 template <typename... Type, template <typename...> typename List, template <typename...> typename Cmp>
-struct merge_two_impl<List<Type...>, List<>, Cmp> {
+struct merge_impl<List<Type...>, List<>, Cmp> {
   using type = List<Type...>;
 };
 
 template <typename List1, typename List2, template <typename...> typename Cmp>
-using merge = typename merge_two_impl<List1, List2, Cmp>::type;
+using merge = typename merge_impl<List1, List2, Cmp>::type;
 
 template <
     typename FirstL,
@@ -273,26 +171,30 @@ template <
     typename List,
     template <typename...>
     typename Cmp>
-struct merge_two_impl<List<FirstL, SecondL...>, List<FirstR, SecondR...>, Cmp> {
-  using left = concat_fast<List, List<FirstL>, merge<List<SecondL...>, List<FirstR, SecondR...>, Cmp>>;
-  using right = concat_fast<List, List<FirstR>, merge<List<FirstL, SecondL...>, List<SecondR...>, Cmp>>;
-  using type = conditional<Cmp<FirstL, FirstR>::value, left, right>;
+struct merge_impl<List<FirstL, SecondL...>, List<FirstR, SecondR...>, Cmp> {
+  template <bool Condition>
+  using select_type = std::conditional_t<
+      Condition,
+      concat_fast<List, List<FirstL>, merge<List<SecondL...>, List<FirstR, SecondR...>, Cmp>>,
+      concat_fast<List, List<FirstR>, merge<List<FirstL, SecondL...>, List<SecondR...>, Cmp>>>;
+
+  using type = select_type<Cmp<FirstL, FirstR>::value>;
 };
 
 // Split
-template <typename _List, typename _Idxs>
+template <typename List, typename Idxs>
 struct split_impl;
 
-template <template <typename...> typename _List, typename... _Type, size_t... Idx>
-struct split_impl<_List<_Type...>, std::index_sequence<Idx...>> {
-  static constexpr size_t cnt = sizeof...(_Type);
-  static constexpr size_t middle = cnt / 2;
-  using left = concat_fast < _List, conditional<Idx<middle, _List<_Type>, _List<>>...>;
-  using right = concat_fast<_List, conditional<middle <= Idx, _List<_Type>, _List<>>...>;
+template <template <typename...> typename List, typename... Type, size_t... Idx>
+struct split_impl<List<Type...>, std::index_sequence<Idx...>> {
+  static constexpr size_t count = sizeof...(Type);
+  static constexpr size_t middle = count / 2;
+  using left = concat_fast<List, conditional<(Idx < middle), List<Type>, List<>>...>;
+  using right = concat_fast<List, conditional<(middle <= Idx), List<Type>, List<>>...>;
 };
 
-template <typename _List>
-using split = split_impl<_List, std::make_index_sequence<count<_List>>>;
+template <typename List>
+using split = split_impl<List, std::make_index_sequence<count<List>>>;
 
 // Merge Sort
 template <typename List, template <typename...> typename Cmp>
@@ -314,9 +216,9 @@ using merge_sort = typename merge_sort_impl<List, Cmp>::type;
 template <typename Type, typename... Rest, template <typename...> typename List, template <typename...> typename Cmp>
 struct merge_sort_impl<List<Type, Rest...>, Cmp> {
   using splitted = split<List<Type, Rest...>>;
-  using first = merge_sort<typename splitted::left, Cmp>;
-  using second = merge_sort<typename splitted::right, Cmp>;
-  using type = merge<first, second, Cmp>;
+  using left = merge_sort<typename splitted::left, Cmp>;
+  using right = merge_sort<typename splitted::right, Cmp>;
+  using type = merge<left, right, Cmp>;
 };
 
 } // namespace tl
